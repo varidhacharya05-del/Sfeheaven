@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en" x-data="app()" x-init="init()">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SafeHaven · Refugee Security Network · Delhi</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.css"/>
+<script src="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          forest: { 50:'#f0f7f3', 100:'#d8ecdf', 200:'#b2d9be', 300:'#7dbf95', 400:'#4da06c', 500:'#2d8a52', 600:'#1a6b3c', 700:'#145530', 800:'#0e3e22', 900:'#092817' },
+          bark:   { 50:'#f5f3ef', 100:'#e8e4db', 200:'#d0c9bc', 300:'#b0a592', 400:'#8f8068', 500:'#6e5f4a', 600:'#554836', 700:'#3d3427', 800:'#251f17', 900:'#0e0d0a' },
+          ember:  { 400:'#e2904a', 500:'#c47b1a', 600:'#a86615' },
+          crimson:{ 400:'#e05555', 500:'#c0392b', 600:'#a32520' },
+        },
+        fontFamily: {
+          serif: ['"DM Serif Display"', 'serif'],
+          sans:  ['"DM Sans"', 'sans-serif'],
+          mono:  ['"JetBrains Mono"', 'monospace'],
+        },
+      }
+    }
+  }
+</script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: 'DM Sans', sans-serif; overflow: hidden; }
+
+  .login-bg {
+    background: #0e0d0a;
+    background-image:
+      radial-gradient(ellipse 80% 60% at 50% -20%, rgba(26,107,60,0.35) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 40% at 80% 80%, rgba(14,62,34,0.25) 0%, transparent 60%);
+  }
+  .login-grid {
+    background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+  .login-card {
+    background: rgba(14,13,10,0.85);
+    border: 1px solid rgba(45,138,82,0.25);
+    backdrop-filter: blur(20px);
+  }
+  .login-input {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #f0f7f3;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .login-input:focus {
+    outline: none;
+    border-color: rgba(45,138,82,0.6);
+    box-shadow: 0 0 0 3px rgba(45,138,82,0.12);
+  }
+  .login-input::placeholder { color: rgba(255,255,255,0.2); }
+  .login-btn {
+    background: linear-gradient(135deg, #1a6b3c 0%, #2d8a52 100%);
+    transition: opacity 0.2s, transform 0.15s;
+  }
+  .login-btn:hover:not(:disabled) { opacity: 0.92; transform: translateY(-1px); }
+  .login-btn:active { transform: translateY(0); }
+  .login-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .scan-line {
+    position: absolute; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(45,138,82,0.5), transparent);
+    animation: scan 3.5s ease-in-out infinite;
+    pointer-events: none; border-radius: 1px;
+  }
+  @keyframes scan { 0%{top:0%;opacity:0} 10%{opacity:1} 90%{opacity:1} 100%{top:100%;opacity:0} }
+
+  .pulse-dot { width:8px;height:8px;border-radius:50%;background:#2d8a52;animation:pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
+
+  @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)} 40%{transform:translateX(8px)} 60%{transform:translateX(-6px)} 80%{transform:translateX(6px)} }
+  .shake { animation: shake 0.4s ease; }
+
+  .nav-active { background: rgba(45,138,82,0.22) !important; color: #7dd6a0 !important; }
+
+  #leaflet-map { z-index: 0; }
+  .map-overlay { z-index: 10; }
+
+  .marker-verified { background:#1a6b3c;border:2.5px solid #fff;border-radius:50%;width:18px;height:18px;box-shadow:0 2px 8px rgba(26,107,60,0.6); }
+  .marker-active   { background:#2563eb;border:2.5px solid #fff;border-radius:50%;width:18px;height:18px;box-shadow:0 2px 8px rgba(37,99,235,0.6); }
+  .marker-capacity { background:#c47b1a;border:2.5px solid #fff;border-radius:50%;width:18px;height:18px;box-shadow:0 2px 8px rgba(196,123,26,0.6); }
+
+  .leaflet-popup-content-wrapper { border-radius:12px !important;font-family:'DM Sans',sans-serif;font-size:13px;border:none;box-shadow:0 8px 32px rgba(0,0,0,0.18) !important; }
+  .leaflet-popup-tip-container { display:none; }
+  .popup-name { font-weight:600;font-size:14px;color:#0e3e22;margin-bottom:4px; }
+  .popup-meta { color:#6b7b72;font-size:12px;margin-bottom:3px; }
+  .popup-chip { display:inline-block;background:#d8ecdf;color:#1a6b3c;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;margin:2px 2px 0 0; }
+
+  .redacted {
+    background: linear-gradient(90deg,#c8d5cc 0%,#dce5df 50%,#c8d5cc 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+    border-radius: 4px; color: transparent; user-select: none; display: inline-block;
+  }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+  .loc-card { animation: fadeSlideUp 0.35s ease both; }
+  @keyframes fadeSlideUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+  .loc-card:nth-child(1){animation-delay:.05s} .loc-card:nth-child(2){animation-delay:.12s}
+  .loc-card:nth-child(3){animation-delay:.19s} .loc-card:nth-child(4){animation-delay:.26s}
+  .loc-card:nth-child(5){animation-delay:.33s}
+
+  .progress-fill { transition: width 0.5s ease; }
+
+  ::-webkit-scrollbar { width:5px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:#b2d9be;border-radius:99px; }
+
+  [x-cloak] { display: none !important; }
+
+  @keyframes fadeInUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+  .fade-up { animation: fadeInUp 0.4s ease both; }
+
+  .otp-input {
+    background:rgba(255,255,255,0.04);border:1.5px solid rgba(255,255,255,0.12);color:#f0f7f3;
+    border-radius:10px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:20px;
+    font-weight:600;transition:border-color 0.2s,box-shadow 0.2s;
+  }
+  .otp-input:focus { outline:none;border-color:rgba(45,138,82,0.6);box-shadow:0 0 0 3px rgba(45,138,82,0.12); }
+
+  .role-coordinator { background:rgba(26,107,60,0.2);color:#4da06c;border:1px solid rgba(26,107,60,0.3); }
+  .role-field       { background:rgba(196,123,26,0.15);color:#c47b1a;border:1px solid rgba(196,123,26,0.25); }
+  .role-admin       { background:rgba(124,58,237,0.15);color:#a78bfa;border:1px solid rgba(124,58,237,0.25); }
+
+  @keyframes lockoutPulse { 0%,100%{background:rgba(192,57,43,0.12)} 50%{background:rgba(192,57,43,0.22)} }
+  .lockout-pulse { animation: lockoutPulse 1.4s ease-in-out infinite; }
+
+  .notyf__toast { font-family:'DM Sans',sans-serif;font-size:13px !important;border-radius:12px !important; }
+
+  .delhi-badge {
+    background: linear-gradient(135deg, rgba(255,153,51,0.15), rgba(19,136,8,0.12));
+    border: 1px solid rgba(255,153,51,0.25);
+  }
+
+  /* API status indicator */
+  .api-ok   { background: rgba(45,138,82,0.15); color: #4da06c; }
+  .api-fail { background: rgba(192,57,43,0.15); color: #e05555; }
+</style>
+</head>
+
+<body class="bg-bark-50 text-bark-900" style="height:100%;overflow:hidden;">
+
+<!-- ═══════════════ LOGIN PAGE ═══════════════ -->
+<div x-show="!loggedIn" x-cloak
+  class="login-bg login-grid fixed inset-0 flex items-center justify-center z-[100]"
+  :class="loginPhase === 'error' ? 'shake' : ''"
+>
+  <div class="absolute inset-0 overflow-hidden pointer-events-none">
+    <div class="absolute top-1/4 left-1/4 w-64 h-64 rounded-full opacity-10" style="background:radial-gradient(circle,#1a6b3c,transparent);filter:blur(60px)"></div>
+    <div class="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full opacity-8" style="background:radial-gradient(circle,#0e3e22,transparent);filter:blur(80px)"></div>
+  </div>
+
+  <div class="w-full max-w-sm mx-4 relative">
+
+    <!-- Phase: Credentials -->
+    <div x-show="loginPhase === 'credentials' || loginPhase === 'error'" class="fade-up">
+      <div class="login-card rounded-3xl p-8 relative overflow-hidden">
+        <div class="scan-line"></div>
+
+        <div class="text-center mb-8">
+          <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4" style="background:rgba(26,107,60,0.2);border:1px solid rgba(45,138,82,0.3)">
+            <span class="text-2xl">🛡️</span>
+          </div>
+          <h1 class="font-serif text-forest-100 text-2xl font-normal tracking-wide">SafeHaven</h1>
+          <p class="text-white/30 text-xs mt-1 font-mono tracking-widest uppercase">Refugee Security Network · Delhi Region</p>
+        </div>
+
+        <!-- API Status -->
+        <div :class="apiOnline ? 'api-ok' : 'api-fail'" class="rounded-xl px-3 py-2 mb-3 flex items-center gap-2 text-xs font-mono transition-all">
+          <span x-text="apiOnline ? '🟢' : '🔴'"></span>
+          <span x-text="apiOnline ? 'BACKEND CONNECTED · AES-256' : 'BACKEND OFFLINE — start server.js'"></span>
+        </div>
+
+        <div class="delhi-badge rounded-xl px-3 py-2 mb-4 flex items-center gap-2">
+          <span class="text-base">🇮🇳</span>
+          <span class="text-xs text-amber-300/80 font-mono">INDIA SECTOR · NCT Delhi Operations</span>
+        </div>
+
+        <div x-show="loginAttempts >= 2 && loginAttempts < 5" class="lockout-pulse rounded-xl px-3.5 py-3 mb-4 border border-crimson-500/30">
+          <p class="text-crimson-400 text-xs font-semibold">⚠️ Warning: <span x-text="5 - loginAttempts"></span> attempt(s) remaining before lockout</p>
+        </div>
+
+        <div x-show="lockedOut" class="lockout-pulse rounded-xl px-3.5 py-4 mb-4 border border-crimson-500/40 text-center">
+          <p class="text-crimson-400 text-sm font-bold mb-1">🔴 Account Temporarily Locked</p>
+          <p class="text-white/40 text-xs">Too many failed attempts. Try again in <span class="font-mono text-crimson-400" x-text="lockoutRemaining + 's'"></span></p>
+        </div>
+
+        <div class="space-y-4" x-show="!lockedOut">
+          <div>
+            <label class="block text-xs text-white/40 font-semibold uppercase tracking-widest mb-2">Worker ID</label>
+            <input x-model="loginId" type="text" placeholder="e.g. COORD-D101"
+              class="login-input w-full rounded-xl px-4 py-3 text-sm font-mono"
+              @keydown.enter="$refs.passInput.focus()"/>
+          </div>
+          <div>
+            <label class="block text-xs text-white/40 font-semibold uppercase tracking-widest mb-2">Password</label>
+            <div class="relative">
+              <input x-ref="passInput" x-model="loginPass" :type="showPass ? 'text' : 'password'"
+                placeholder="Enter password"
+                class="login-input w-full rounded-xl px-4 py-3 pr-11 text-sm"
+                @keydown.enter="attemptLogin()"/>
+              <button @click="showPass = !showPass" class="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors text-sm">
+                <span x-text="showPass ? '🙈' : '👁️'"></span>
+              </button>
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs text-white/40 font-semibold uppercase tracking-widest mb-2">Role</label>
+            <select x-model="loginRole" class="login-input w-full rounded-xl px-4 py-3 text-sm cursor-pointer" style="background:rgba(255,255,255,0.04)">
+              <option value="" class="bg-bark-900">Select your role…</option>
+              <option value="field" class="bg-bark-900">Field Worker</option>
+              <option value="coordinator" class="bg-bark-900">Coordinator</option>
+              <option value="admin" class="bg-bark-900">UNHCR Administrator</option>
+            </select>
+          </div>
+
+          <button @click="attemptLogin()"
+            :disabled="!loginId || !loginPass || !loginRole || lockedOut || loginLoading"
+            class="login-btn w-full text-white font-semibold py-3.5 rounded-xl text-sm mt-2 cursor-pointer">
+            <span x-show="!loginLoading">🔐 Authenticate</span>
+            <span x-show="loginLoading" class="flex items-center justify-center gap-2">
+              <svg class="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+              Verifying credentials…
+            </span>
+          </button>
+        </div>
+
+        <div class="mt-6 pt-5 border-t border-white/8">
+          <p class="text-[10px] text-white/20 font-mono text-center leading-relaxed">
+            Demo: ID <span class="text-forest-500">COORD-D101</span> · Pass <span class="text-forest-500">SafeHaven@2024</span> · Role <span class="text-forest-500">Coordinator</span>
+          </p>
+        </div>
+      </div>
+      <p class="text-center text-white/20 text-xs mt-5">Secured by UNHCR Protocol · AES-256 · End-to-End Encrypted</p>
+    </div>
+
+    <!-- Phase: 2FA -->
+    <div x-show="loginPhase === '2fa'" class="fade-up">
+      <div class="login-card rounded-3xl p-8 relative overflow-hidden">
+        <div class="scan-line"></div>
+        <div class="text-center mb-8">
+          <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4" style="background:rgba(196,123,26,0.15);border:1px solid rgba(196,123,26,0.3)">
+            <span class="text-2xl">📲</span>
+          </div>
+          <h2 class="font-serif text-forest-100 text-xl font-normal">Two-Factor Auth</h2>
+          <p class="text-white/30 text-xs mt-2 leading-relaxed">Enter the 6-digit code sent to your registered device</p>
+        </div>
+
+        <div class="flex gap-2 justify-center mb-6">
+          <template x-for="(d, i) in otpDigits" :key="i">
+            <input :id="'otp-' + i" type="text" maxlength="1" inputmode="numeric"
+              class="otp-input w-11 h-14"
+              x-model="otpDigits[i]"
+              @input="otpInput(i, $event)"
+              @keydown.backspace="otpBackspace(i)"
+              @paste.prevent="otpPaste($event)"/>
+          </template>
+        </div>
+
+        <div class="text-center mb-6">
+          <p class="text-xs text-white/30">Demo code: <span class="font-mono text-forest-400">482916</span></p>
+        </div>
+
+        <button @click="verify2FA()"
+          :disabled="otpDigits.join('').length < 6 || loginLoading"
+          class="login-btn w-full text-white font-semibold py-3.5 rounded-xl text-sm cursor-pointer">
+          <span x-show="!loginLoading">✅ Verify Code</span>
+          <span x-show="loginLoading" class="flex items-center justify-center gap-2">
+            <svg class="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+            Verifying…
+          </span>
+        </button>
+
+        <button @click="loginPhase = 'credentials'; preToken = ''" class="w-full text-center text-white/30 hover:text-white/60 text-xs mt-4 transition-colors cursor-pointer">← Back to login</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════ MAIN APP ═══════════════ -->
+<div x-show="loggedIn" x-cloak class="flex h-screen overflow-hidden">
+</div>
+
+<!-- ═══════════════ ALPINE APP SCRIPT ═══════════════ -->
+<script>
+const API = '';  // empty = same origin (backend on localhost:3000)
+
+function app() {
+  return {
+    // Auth state
+    loggedIn: false,
+    loginPhase: 'credentials',
+    loginId: '',
+    loginPass: '',
+    loginRole: '',
+    showPass: false,
+    loginLoading: false,
+    loginAttempts: 0,
+    lockedOut: false,
+    lockoutRemaining: 0,
+    preToken: '',       // holds pre-auth token between steps 1 & 2
+    authToken: '',      // full JWT after 2FA
+    locationToken: '',  // scoped token from vetting key unlock
+    otpDigits: ['','','','','',''],
+
+    // UI state
+    activePage: 'find',
+    unlocked: false,
+    keyInput: '',
+    dragging: false,
+    fileQueue: [],
+    uploadLog: [],
+    map: null,
+    markers: [],
+    notyf: null,
+    apiOnline: false,
+
+    // Session
+    sessionSeconds: 1800,
+    sessionTimer: '30:00',
+    sessionPct: 100,
+    sessionInterval: null,
+
+    currentUser: { id:'', name:'', avatar:'', role:'', roleLabel:'', loginTime:'' },
+
+    // ── INIT ──
+    async init() {
+      this.notyf = new Notyf({
+        duration: 2800,
+        position: { x:'right', y:'bottom' },
+        types: [
+          { type:'success', background:'#0e3e22', icon:false },
+          { type:'error',   background:'#7f1d1d', icon:false },
+        ]
+      });
+      await this.checkHealth();
+    },
+
+    // ── API HELPER ──
+    async apiFetch(path, opts = {}) {
+      const headers = { 'Content-Type': 'application/json' };
+      if (this.authToken) headers['Authorization'] = `Bearer ${this.authToken}`;
+      if (this.locationToken) headers['X-Location-Token'] = this.locationToken;
+
+      const fetchOpts = {
+        method: opts.method || 'GET',
+        headers,
+      };
+      if (opts.body) fetchOpts.body = opts.body;
+
+      const res = await fetch(path, fetchOpts);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error || res.statusText);
+      }
+      return res.json();
+    },
+
+    async checkHealth() {
+      try {
+        const res = await fetch('/api/health');
+        this.apiOnline = res.ok;
+      } catch {
+        this.apiOnline = false;
+      }
+    },
+
+    // ── AUTH ──
+    async attemptLogin() {
+      if (this.lockedOut || this.loginLoading) return;
+      this.loginLoading = true;
+      try {
+        const data = await this.apiFetch('/api/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({ workerId: this.loginId.trim(), password: this.loginPass, role: this.loginRole }),
+        });
+        this.preToken = data.preToken;
+        this.loginLoading = false;
+        this.loginPhase = '2fa';
+        this.$nextTick(() => document.getElementById('otp-0')?.focus());
+      } catch (err) {
+        this.loginLoading = false;
+        this.loginAttempts++;
+        this.loginPhase = 'error';
+        setTimeout(() => this.loginPhase = 'credentials', 500);
+        this.notyf.error('❌ ' + err.message);
+        if (this.loginAttempts >= 5) this.triggerLockout();
+      }
+    },
+
+    async verify2FA() {
+      const code = this.otpDigits.join('');
+      this.loginLoading = true;
+      try {
+        const data = await this.apiFetch('/api/auth/verify-otp', {
+          method: 'POST',
+          body: JSON.stringify({ preToken: this.preToken, otp: code }),
+        });
+        this.authToken = data.token;
+        this.currentUser = data.user;
+        this.loginLoading = false;
+        this.loggedIn = true;
+        this.loginAttempts = 0;
+        this.notyf.success(`✅ Welcome, ${data.user.name}`);
+      } catch (err) {
+        this.loginLoading = false;
+        this.notyf.error('❌ ' + err.message);
+        this.otpDigits = ['','','','','',''];
+        this.$nextTick(() => document.getElementById('otp-0')?.focus());
+      }
+    },
+
+    triggerLockout() {
+      this.lockedOut = true;
+      this.lockoutRemaining = 30;
+      const t = setInterval(() => {
+        this.lockoutRemaining--;
+        if (this.lockoutRemaining <= 0) {
+          clearInterval(t);
+          this.lockedOut = false;
+          this.loginAttempts = 0;
+        }
+      }, 1000);
+    },
+
+    otpInput(i, e) {
+      if (e.target.value.length === 1 && i < 5) {
+        document.getElementById('otp-' + (i + 1))?.focus();
+      }
+    },
+
+    otpBackspace(i) {
+      if (i > 0 && !this.otpDigits[i]) {
+        this.$nextTick(() => document.getElementById('otp-' + (i - 1))?.focus());
+      }
+    },
+
+    otpPaste(e) {
+      const text = (e.clipboardData || window.clipboardData).getData('text');
+      const digits = text.replace(/\D/g, '').split('').slice(0, 6);
+      this.otpDigits = [...digits, ...Array(6 - digits.length).fill('')];
+      this.$nextTick(() => document.getElementById('otp-5')?.focus());
+    },
+  };
+}
+</script>
+
+</body>
+</html>
